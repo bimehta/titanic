@@ -1,0 +1,12 @@
+rm(list = ls())
+set.seed(1234)
+library(ggplot2)
+library(plyr)
+library(boot)
+library(caret)
+
+train <- read.csv('/home/greg/Dropbox/titanic/train.csv', stringsAsFactors = FALSE)
+test <- read.csv('/home/greg/Dropbox/titanic/test.csv', stringsAsFactors = FALSE)
+full <- join(train, test, type = 'full')
+colnames(full) <- tolower(colnames(full))
+rm(train, test)

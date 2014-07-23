@@ -1,0 +1,313 @@
+Kaggle Titanic
+--------------
+
+Remove all variables, set working directory and seed and load required libraries.
+
+```{r}
+rm(list = ls())
+set.seed(1234)
+setwd('/home/greg/Dropbox/titanic')
+library(tree)
+library(ggplot2)
+library(plyr)
+```
+
+Load training and test data.
+
+```{r}
+train <- read.csv('train.csv', stringsAsFactors = FALSE)
+test <- read.csv('test.csv', stringsAsFactors = FALSE)
+```
+
+Notice that Survived is valid for all training data.
+
+```{r}
+sum(!train$Survived %in% c(0, 1))
+```
+
+## Cleaning
+
+Combine training and test data together in preparation for cleaning and lowercase column names.
+
+```{r}
+full <- join(train, test, type = 'full')
+colnames(full) <- tolower(colnames(full))
+```
+
+### Name
+
+Extract title from names. Notice no missing titles.
+
+```{r}
+full$title <- NA
+full[grepl(' Mr\\.', full$name), 'title'] <- 'mr'
+full[grepl(' Mrs\\.', full$name), 'title'] <- 'mrs'
+full[grepl(' Rev\\.', full$name), 'title'] <- 'rev'
+full[grepl(' Dr\\.', full$name), 'title'] <- 'dr'
+full[grepl(' Master\\.', full$name), 'title'] <- 'master'
+full[grepl(' Miss\\.', full$name), 'title'] <- 'miss'
+full[grepl(' Don\\.', full$name), 'title'] <- 'don'
+full[grepl(' Dona\\.', full$name), 'title'] <- 'dona'
+full[grepl(' Mme\\.', full$name), 'title'] <- 'mme'
+full[grepl(' Ms\\.', full$name), 'title'] <- 'ms'
+full[grepl(' Major\\.', full$name), 'title'] <- 'major'
+full[grepl(' Lady\\.', full$name), 'title'] <- 'lady'
+full[grepl(' Sir\\.', full$name), 'title'] <- 'sir'
+full[grepl(' Mlle\\.', full$name), 'title'] <- 'mlle'
+full[grepl(' Col\\.', full$name), 'title'] <- 'col'
+full[grepl(' Capt\\.', full$name), 'title'] <- 'capt'
+full[grepl(' Countess\\.', full$name), 'title'] <- 'countess'
+full[grepl(' Jonkheer\\.', full$name), 'title'] <- 'jonkheer'
+sum(is.na(full$title))
+
+train <- subset(full, !is.na(survived))
+ggplot(train, aes(title, survived)) + stat_summary(fun.y = mean, geom = 'bar')
+ggplot(train, aes(title, survived)) + stat_summary(fun.y = sum, geom = 'bar')
+```
+
+Extract last name. Notice no missing last names.
+
+```{r}
+full$last <- sapply(strsplit(full$name, ','), function(x) x[1])
+sum(is.na(full$last) || full$last == '')
+```
+
+Extract last.any.lived.
+
+```{r}
+full$last.any.lived <- sapply(1 : nrow(full), function(i) {
+  survivors <- subset(
+    full, last == full[i, 'last'] & 
+    name != full[i, 'name'] & 
+    !is.na(full[i, 'survived'])
+  )
+  ifelse (nrow(survivors) == 0, 0.5, 1.0 * (sum(survivors$survived) > 0))
+})
+```
+
+### Age
+
+Round age.
+
+```{r}
+full$age <- round(full$age)
+```
+
+`r sum(is.na(full$age))` missing ages.
+
+```{r}
+sum(is.na(full$age))
+```
+
+### Sex
+
+No missing sex.
+
+```{r}
+sum(is.na(full$sex) || full$sex == ' ')
+```
+
+Factorize sex.
+
+```{r}
+full$sex <- factor(toupper(substring(full$sex, 1, 1)))
+```
+
+Explore sex survival.
+
+```{r}
+train <- subset(full, !is.na(survived))
+ggplot(train, aes(sex, survived)) + stat_summary(fun.y = mean, geom = 'bar')
+```
+
+### Cabin
+
+Explore cabins.
+
+```{r}
+full[order(full$cabin), c('last', 'survived', 'cabin', 'fare')]
+```
+
+Factorize cabin. Use pclass for missing cabins.
+
+```{r}
+full$cabin[full$cabin == ''] <- full$pclass[full$cabin == '']
+full$cabin <- factor(sapply(full$cabin, function(cabin) substring(cabin, 1, 1)))
+```
+
+### Fare
+
+One missing fare.
+
+```{r}
+sum(is.na(full$fare))
+```
+
+Round fare. 
+
+```{r}
+full$fare <- round(full$fare)
+```
+
+Explore fares.
+
+```{r}
+full[order(full$fare), 'fare']
+```
+
+```{r}
+qplot(fare, data = full)
+```
+
+
+Notice some high fares. Even in third class. We need to determine fare per person.
+
+```{r}
+ggplot(full, aes(fare)) + geom_histogram(binwidth = 20) + facet_wrap(~ pclass)
+```
+
+### Ticket
+
+Explore tickets.
+
+```{r}
+full[order(full$ticket), 'ticket']
+```
+
+Factorize ticket.
+
+```{r}
+full$ticket <- factor(sapply(full$ticket, function(ticket) {
+  if (grepl('paris', ticket, ignore.case = TRUE)) {
+    return('paris')
+  } else if (substring(ticket, 1, 2) == 'PC') {
+    return('pc')
+  } else if (substring(ticket, 1, 2) == 'PP') {
+    return('pp')
+  } else if (substring(ticket, 1, 4) == 'P/PP') {
+    return('ppp')
+  } else if (substring(ticket, 1, 5) == 'S.O.C') {
+    return('soc')
+  } else if (substring(ticket, 1, 4) == 'SO/C') {
+    return('soc')
+  } else if (substring(ticket, 1, 4) == 'STON') {
+    return('ston')
+  } else if (substring(ticket, 1, 2) == 'XX') {
+    return('xx')
+  } else {
+    return('xx')
+  }
+}))
+```
+
+### Embarked
+`r sum(full$embarked == '')` missing embarked.
+
+```{r}
+sum(full$embarked == '')
+ggplot(full, aes(embarked)) + geom_histogram()
+full[full$embarked == '', 'embarked'] <- 'S'
+ggplot(full, aes(embarked)) + geom_histogram()
+
+train <- subset(full, !is.na(survived))
+ggplot(train, aes(embarked, survived)) + stat_summary(fun.y = mean, geom = 'bar')
+last_plot() + facet_wrap(~ sex)
+```
+
+Factorize embarked.
+
+```{r}
+full$embarked <- factor(full$embarked)
+```
+
+### Class
+
+Explore how survival is related to passenger class.
+
+First class passengers are more likely to live. Third class passengers are more likely to die.
+
+```{r}
+train <- subset(full, !is.na(survived))
+ggplot(train, aes(pclass, survived)) + stat_summary(fun.y = mean, geom = 'bar') + facet_wrap(embarked ~ sex)
+```
+
+
+## Random Forest
+
+```{r}
+library(randomForest)
+
+model.create <- function(data) {
+  randomForest(survived ~ sex + pclass + cabin + embarked, data = data)
+}
+
+model.predict <- function(model, data) {predict(model, data)}
+```
+
+## SVM
+
+```{r}
+library(kernlab)
+
+model.create <- function(data) {
+  ksvm(survived ~ sex + pclass + cabin + embarked, data = data)
+}
+
+model.predict <- function(model, data) {predict(model, data, type = 'response')}
+```
+
+## Neural Net
+
+```{r}
+library(nnet)
+
+model.create <- function(data) {
+  nnet(survived ~ sex + pclass, data = data, size = 1, linout = FALSE, maxit = 10000)
+}
+
+model.predict <- function(model, data) {predict(model, data, type = 'raw')}
+```
+
+## Decision Tree
+
+```{r}
+model.create <- function(data) {
+  tree(survived ~ sex + pclass + title + embarked, data = data)
+}
+
+model.predict <- function(model, data) {predict(model, data)}
+```
+
+## Cross Validate
+
+```{r}
+train <- subset(full, !is.na(survived))
+row.names(train) <- NULL
+n <- nrow(train)
+best.score <- 0
+best.model <- NULL
+
+results <- data.frame(scores = replicate(30, {
+  trial <- sample(1 : n, n * 4 / 5)
+  model <- model.create(train[trial, ])
+  cv <- train[-trial, ]
+  score <- mean(cv$survived == round(model.predict(model, cv)))
+  if (score > best.score) {
+    best.score <<- score
+    best.model <<- model
+  }
+  score
+}))  
+
+ggplot(results, aes(scores)) + geom_histogram(binwidth = .01)
+```
+
+## Submit
+
+```{r}
+test <- subset(full, is.na(survived))
+row.names(test) <- NULL
+answer <- data.frame(PassengerId = test$passengerid, Survived = round(predict(best.model, test)))
+write.csv(answer, 'submit-002.csv', quote = FALSE, row.names = FALSE)
+sum(read.csv('submit-001.csv') != answer)
+```
